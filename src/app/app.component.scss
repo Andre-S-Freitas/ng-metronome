@@ -1,0 +1,21 @@
+div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+}
+
+button {
+    padding: 1rem 2rem;
+    font-size: 2rem;
+    background-color: #666;
+    border: none;
+
+    &:hover {
+        background-color: #777;
+    }
+
+    &:active {
+        background-color: #555;
+    }
+}
