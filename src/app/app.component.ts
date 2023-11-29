@@ -16,9 +16,10 @@ export class AppComponent {
   sounds = [
     'assets/sounds/Synth_Sine_E_hi.wav',
     'assets/sounds/Synth_Block_C_lo.wav',
+    'assets/sounds/Perc_Castanet_hi.wav',
   ];
 
-  sheet = [
+  phrases = [
     new Phrase(158, 8, 3),
     new Phrase(191, 8, 3),
     new Phrase(180, 8, 3),
@@ -26,45 +27,96 @@ export class AppComponent {
     new Phrase(212, 8, 3),
   ];
 
+  merger: ChannelMergerNode = null;
   context: AudioContext = null;
   bufferSounds: AudioBuffer[] = [];
+  playing = false;
+
+  barsAhead = 2;
 
   constructor(
     private http: HttpClient
-  ) {
+  ) { }
 
+  toogleStart(): void {
+    if (this.playing) {
+      this.pause();
+    } else {
+      this.start();
+    }
+  }
+
+  start(): void {
+    if (this.context && !this.playing) {
+      this.resume();
+    } else {
+      this.initilise();
+    }
+    this.playing = true;
+  }
+
+  resume(): void {
+    this.playing = true;
+    this.context.resume();
+  }
+
+  stop(): void {
+    this.playing = false;
+    this.context.close();
+    this.context = null;
+  }
+
+  pause(): void {
+    this.playing = false;
+    this.context.suspend();
+  }
+
+  removePhrase(phrase: Phrase): void {
+    this.phrases = this.phrases.filter(p => p !== phrase);
+  }
+
+  addPhrase(): void {
+    const lastPhrase = this.phrases[this.phrases.length - 1];
+    this.phrases.push(new Phrase(lastPhrase.bpm, lastPhrase.bars, lastPhrase.beatsPerBar));
   }
 
   async initilise(): Promise<void> {
     if (!this.context) {
       this.context = new AudioContext();
+      this.merger = new ChannelMergerNode(this.context, { numberOfInputs: 2 });
       await this.loadSounds();
     }
 
     let startTime = 0;
 
-    for (let phraseI = 0; phraseI < this.sheet.length; phraseI++) {
-      const phrase = this.sheet[phraseI];
+    // play 3 clicks in a different sound in the same tempo as the first phrase
+    for (let i = 0; i < 3; i++) {
+      this.scheduleSound(2, startTime);
+      startTime += this.phrases[0].beatLength();
+    }
+
+    for (let phraseI = 0; phraseI < this.phrases.length; phraseI++) {
+      const phrase = this.phrases[phraseI];
 
       for (let barI = 0; barI < phrase.bars; barI++) {
         for (let beatI = 0; beatI < phrase.beatsPerBar; beatI++) {
           const sound = this.isOdd(phraseI) ? 1 : 0;
-          this.playSound(sound, startTime);
+          this.scheduleSound(sound, startTime, sound);
           console.log({ phraseI, barI, beatI, startTime, sound });
           startTime += phrase.beatLength();
         }
       }
 
-      if (phraseI < this.sheet.length - 1) {
+      if (phraseI < this.phrases.length - 1) {
         const phraseAheadI = phraseI + 1;
         let startTimeBack = startTime;
-        const phraseAhead = this.sheet[phraseI + 1];
+        const phraseAhead = this.phrases[phraseI + 1];
 
-        for (let barAheadI = 0; barAheadI < 2; barAheadI++) {
+        for (let barAheadI = 0; barAheadI < this.barsAhead; barAheadI++) {
 
           for (let beatAheadI = 0; beatAheadI < phraseAhead.beatsPerBar; beatAheadI++) {
             const sound = this.isOdd(phraseAheadI) ? 1 : 0;
-            this.playSound(sound, startTimeBack);
+            this.scheduleSound(sound, startTimeBack, sound);
             console.log({ phraseAheadI, barAheadI, beatAheadI, startTimeBack, sound });
             startTimeBack -= phraseAhead.beatLength();
           }
@@ -96,11 +148,34 @@ export class AppComponent {
     )
   }
 
-  playSound(sound: number, time: number): void {
+  scheduleSound(soundIndex: number, timeInMs: number, channel?: number, gainAmount: number = 1,): void {
     const source = this.context.createBufferSource();
-    source.buffer = this.bufferSounds[sound];
-    source.connect(this.context.destination);
-    source.start(time / 1000);
+
+    if (!this.bufferSounds[soundIndex]) {
+      throw new Error(`Sound ${soundIndex} not loaded`);
+    }
+
+    // set the sound to be played
+    source.buffer = this.bufferSounds[soundIndex];
+
+    // set volume gains
+    const gain = this.context.createGain();
+    gain.gain.value = gainAmount;
+    source.connect(gain);
+
+    if (channel === undefined) {
+      source.connect(this.merger, 0, 0);
+      source.connect(this.merger, 0, 1);
+    } else {
+      channel = channel === 1 ? 1 : 0;
+      source.connect(this.merger, 0, channel);
+    }
+
+    // connect nodes
+    this.merger.connect(this.context.destination);
+
+    // schedule sound
+    source.start(timeInMs / 1000);
   }
 
 }

@@ -1,21 +1,25 @@
-div {
+mat-card {
+    margin: 1rem auto;
+    max-width: 600px;
+
+    mat-card-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+.phrase {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100vh;
-}
+    gap: 1rem;
+    padding: .5rem;
 
-button {
-    padding: 1rem 2rem;
-    font-size: 2rem;
-    background-color: #666;
-    border: none;
-
-    &:hover {
-        background-color: #777;
+    mat-form-field {
+        max-width: 120px;
     }
 
-    &:active {
-        background-color: #555;
-    }
+
 }
