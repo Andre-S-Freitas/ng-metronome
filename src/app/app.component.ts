@@ -4,7 +4,7 @@ import { BufferLoader } from './classes/bufferLoader';
 import { Observable, forkJoin, map, switchMap } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 
-
+type Channel = 'left' | 'right' | 'both';
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
@@ -30,13 +30,16 @@ export class AppComponent {
   merger: ChannelMergerNode = null;
   context: AudioContext = null;
   bufferSounds: AudioBuffer[] = [];
+  // TODO: make playing false when all phrases have been played
   playing = false;
 
   barsAhead = 2;
 
   constructor(
     private http: HttpClient
-  ) { }
+  ) {
+
+  }
 
   toogleStart(): void {
     if (this.playing) {
@@ -62,8 +65,10 @@ export class AppComponent {
 
   stop(): void {
     this.playing = false;
-    this.context.close();
-    this.context = null;
+    if (this.context) {
+      this.context.close();
+      this.context = null;
+    }
   }
 
   pause(): void {
@@ -80,6 +85,30 @@ export class AppComponent {
     this.phrases.push(new Phrase(lastPhrase.bpm, lastPhrase.bars, lastPhrase.beatsPerBar));
   }
 
+  schedulePhrase(phrase: Phrase, startTime: number, channel: Channel, audio: AudioBuffer): number {
+    for (let i = 0; i < phrase.bars; i++) {
+      startTime = this.scheduleBar(phrase.beatsPerBar, phrase.beatLength(), startTime, channel, audio);
+    }
+    return startTime;
+  }
+
+  scheduleBar(beatsPerBar: number, beatLength: number, startTime: number, channel: Channel, audio: AudioBuffer): number {
+    for (let i = 0; i < beatsPerBar; i++) {
+      const gain = i === 0 ? 3 : 1;
+      this.scheduleSound(audio, startTime, channel, gain);
+      startTime += beatLength;
+    }
+    return startTime;
+  }
+
+  scheduleCountIn(size: number, beatLength: number, startTime: number, audio: AudioBuffer): number {
+    for (let i = 0; i < size; i++) {
+      this.scheduleSound(audio, startTime, 'both', 1);
+      startTime += beatLength;
+    }
+    return startTime;
+  }
+
   async initilise(): Promise<void> {
     if (!this.context) {
       this.context = new AudioContext();
@@ -88,40 +117,25 @@ export class AppComponent {
     }
 
     let startTime = 0;
+    startTime = this.scheduleCountIn(3, this.phrases[0].beatLength(), startTime, this.getSound(2));
 
-    // play 3 clicks in a different sound in the same tempo as the first phrase
-    for (let i = 0; i < 3; i++) {
-      this.scheduleSound(2, startTime);
-      startTime += this.phrases[0].beatLength();
-    }
+    for (let i = 0; i < this.phrases.length; i++) {
+      const phrase = this.phrases[i];
+      const sound = this.isOdd(i) ? this.getSound(1) : this.getSound(0);
+      const channel = this.isOdd(i) ? 'left' : 'right';
+      // console.log('Scheduling phrase', { startTime, phrase, channel, sound });
 
-    for (let phraseI = 0; phraseI < this.phrases.length; phraseI++) {
-      const phrase = this.phrases[phraseI];
-
-      for (let barI = 0; barI < phrase.bars; barI++) {
-        for (let beatI = 0; beatI < phrase.beatsPerBar; beatI++) {
-          const sound = this.isOdd(phraseI) ? 1 : 0;
-          this.scheduleSound(sound, startTime, sound);
-          console.log({ phraseI, barI, beatI, startTime, sound });
-          startTime += phrase.beatLength();
+      if (i !== 0) {
+        // TODO: prevent bars ahead from longer than the previous phrase 
+        startTime = startTime - phrase.barLength() * this.barsAhead;
+        // console.log('Scheduling bars ahead', { startTime, barsAhead: this.barsAhead });
+        for (let j = 0; j < this.barsAhead; j++) {
+          startTime = this.scheduleBar(phrase.beatsPerBar, phrase.beatLength(), startTime, channel, sound);
         }
       }
 
-      if (phraseI < this.phrases.length - 1) {
-        const phraseAheadI = phraseI + 1;
-        let startTimeBack = startTime;
-        const phraseAhead = this.phrases[phraseI + 1];
-
-        for (let barAheadI = 0; barAheadI < this.barsAhead; barAheadI++) {
-
-          for (let beatAheadI = 0; beatAheadI < phraseAhead.beatsPerBar; beatAheadI++) {
-            const sound = this.isOdd(phraseAheadI) ? 1 : 0;
-            this.scheduleSound(sound, startTimeBack, sound);
-            console.log({ phraseAheadI, barAheadI, beatAheadI, startTimeBack, sound });
-            startTimeBack -= phraseAhead.beatLength();
-          }
-        }
-      }
+      // console.log('Scheduling bars', { startTime });
+      startTime = this.schedulePhrase(phrase, startTime, channel, sound);
     }
   }
 
@@ -148,27 +162,34 @@ export class AppComponent {
     )
   }
 
-  scheduleSound(soundIndex: number, timeInMs: number, channel?: number, gainAmount: number = 1,): void {
-    const source = this.context.createBufferSource();
-
-    if (!this.bufferSounds[soundIndex]) {
-      throw new Error(`Sound ${soundIndex} not loaded`);
+  getSound(index: number): AudioBuffer {
+    if (!this.bufferSounds[index]) {
+      throw new Error(`Sound ${index} not loaded`);
     }
 
+    return this.bufferSounds[index];
+  }
+
+  scheduleSound(audio: AudioBuffer, timeInMs: number, channel: Channel, gainAmount: number = 1,): void {
+    // console.log('Scheduling sound', { audio, timeInMs, channel, gainAmount });
+    const source = this.context.createBufferSource();
+
     // set the sound to be played
-    source.buffer = this.bufferSounds[soundIndex];
+    source.buffer = audio;
 
     // set volume gains
     const gain = this.context.createGain();
     gain.gain.value = gainAmount;
-    source.connect(gain);
 
-    if (channel === undefined) {
-      source.connect(this.merger, 0, 0);
-      source.connect(this.merger, 0, 1);
+    if (channel === 'both') {
+      source.connect(gain).connect(this.merger, 0, 0);
+      source.connect(gain).connect(this.merger, 0, 1);
+    } else if (channel === 'left') {
+      source.connect(gain).connect(this.merger, 0, 0);
+    } else if (channel === 'right') {
+      source.connect(gain).connect(this.merger, 0, 1);
     } else {
-      channel = channel === 1 ? 1 : 0;
-      source.connect(this.merger, 0, channel);
+      throw new Error(`Unknown channel ${channel}`);
     }
 
     // connect nodes

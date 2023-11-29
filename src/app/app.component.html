@@ -19,7 +19,7 @@
                 <input matInput [(ngModel)]="phrase.bars">
             </mat-form-field>
             <mat-form-field>
-                <mat-label>Beats Per Bar</mat-label>
+                <mat-label>Beats</mat-label>
                 <input matInput [(ngModel)]="phrase.beatsPerBar">
             </mat-form-field>
             <button mat-icon-button (click)="removePhrase(phrase)">
@@ -40,7 +40,7 @@
         </mat-card-title>
     </mat-card-header>
     <mat-card-content>
-        <div>
+        <div class="controls-container">
             <button mat-icon-button (click)="toogleStart()">
                 @if (playing) {
                 <mat-icon>pause</mat-icon>
@@ -53,11 +53,10 @@
                 <mat-icon>stop</mat-icon>
             </button>
 
-            <mat-form-field>
+            <mat-form-field class="bars-ahead-input">
                 <mat-label>Bars Ahead</mat-label>
                 <input matInput [(ngModel)]="barsAhead">
             </mat-form-field>
-
         </div>
     </mat-card-content>
 </mat-card>

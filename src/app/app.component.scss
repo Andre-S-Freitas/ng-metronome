@@ -1,6 +1,6 @@
 mat-card {
     margin: 1rem auto;
-    max-width: 600px;
+    max-width: 380px;
 
     mat-card-content {
         display: flex;
@@ -18,8 +18,20 @@ mat-card {
     padding: .5rem;
 
     mat-form-field {
-        max-width: 120px;
+        max-width: 70px;
     }
 
 
+}
+
+.controls-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+
+    .bars-ahead-input {
+        max-width: 120px;
+
+    }
 }
